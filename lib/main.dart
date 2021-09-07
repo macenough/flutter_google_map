@@ -1,15 +1,14 @@
 import 'dart:convert';
+import 'dart:math' show cos, sqrt, asin;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_google_places/flutter_google_places.dart';
 import 'package:flutter_maps/secrets.dart'; // Stores the Google Maps API Key
 import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+import 'package:geocode/geocode.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:http/http.dart' as http;
-
-import 'dart:math' show cos, sqrt, asin;
 
 void main() {
   runApp(MyApp());
@@ -58,6 +57,9 @@ class _MapViewState extends State<MapView> {
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   List<dynamic> _placeList = [];
   String? selectPlace;
+  late double destinationLatitude;
+  late double destinationLongitude;
+  bool isSelected = false;
 
   Widget _textField({
     required TextEditingController controller,
@@ -66,6 +68,7 @@ class _MapViewState extends State<MapView> {
     required String hint,
     required double width,
     required Icon prefixIcon,
+    required bool isenable,
     Widget? suffixIcon,
     required Function(String) locationCallback,
   }) {
@@ -77,6 +80,7 @@ class _MapViewState extends State<MapView> {
         },
         controller: controller,
         focusNode: focusNode,
+        enabled: isenable ? false : true,
         decoration: new InputDecoration(
           prefixIcon: prefixIcon,
           suffixIcon: suffixIcon,
@@ -168,8 +172,8 @@ class _MapViewState extends State<MapView> {
           ? _currentPosition.longitude
           : startPlacemark[0].longitude;
 
-      double destinationLatitude = destinationPlacemark[0].latitude;
-      double destinationLongitude = destinationPlacemark[0].longitude;
+      destinationLatitude = destinationPlacemark[0].latitude;
+      destinationLongitude = destinationPlacemark[0].longitude;
 
       String startCoordinatesString = '($startLatitude, $startLongitude)';
       String destinationCoordinatesString =
@@ -440,6 +444,7 @@ class _MapViewState extends State<MapView> {
                                   _textField(
                                       label: 'Start',
                                       hint: 'Choose starting point',
+                                      isenable: true,
                                       prefixIcon: Icon(Icons.looks_one),
                                       suffixIcon: IconButton(
                                         icon: Icon(Icons.my_location),
@@ -461,43 +466,76 @@ class _MapViewState extends State<MapView> {
                                   _textField(
                                       label: 'Destination',
                                       hint: 'Choose destination',
+                                      isenable: isSelected,
                                       prefixIcon: Icon(Icons.map),
                                       suffixIcon: IconButton(
                                         icon: Icon(Icons.cancel),
                                         onPressed: () {
                                           destinationAddressController.text =
                                               "";
+                                          setState(() {
+                                            isSelected = false;
+                                          });
                                         },
                                       ),
                                       controller: destinationAddressController,
                                       focusNode: desrinationAddressFocusNode,
                                       width: width,
                                       locationCallback: (String value) {
-                                        setState(() async {
+                                        /* setState(() async {
                                           selectPlace = value;
-                                          _destinationAddress=selectPlace!;
-                                        });
+                                          _destinationAddress = selectPlace!;
+                                        });*/
                                       }),
-                                  ListView.builder(
-                                    physics: NeverScrollableScrollPhysics(),
-                                    shrinkWrap: true,
-                                    itemCount: _placeList.length,
-                                    itemBuilder: (context, index) {
-                                      return ListTile(
-                                        title: Text(
-                                            _placeList[index]["description"]),
-                                        onTap: () {
-                                         /* Scaffold.of(context).showSnackBar(
-                                              SnackBar(
-                                                  content: Text(
-                                                      _placeList[index]
-                                                          ["description"])));*/
-                                          selectPlace = _placeList[index]["description"];
-                                            destinationAddressController.text=selectPlace!;
-                                        },
-                                      );
-                                    },
-                                  ),
+                                  !isSelected
+                                      ? ListView.builder(
+                                          physics:
+                                              NeverScrollableScrollPhysics(),
+                                          shrinkWrap: true,
+                                          itemCount: _placeList.length,
+                                          itemBuilder: (context, index) {
+                                            return ListTile(
+                                              title: Text(_placeList[index]
+                                                  ["description"]),
+                                              onTap: () async {
+                                                isSelected = true;
+                                                selectPlace = _placeList[index]
+                                                    ["description"];
+
+                                                /* _placeList[index]["place_id"];*/
+                                                GeoCode geoCode = GeoCode();
+
+                                                try {
+                                                  Coordinates coordinates =
+                                                      await geoCode
+                                                          .forwardGeocoding(
+                                                              address:
+                                                                  selectPlace!);
+
+                                                  print(
+                                                      "Latitude: ${coordinates.latitude}");
+                                                  print(
+                                                      "Longitude: ${coordinates.longitude}");
+
+                                                  setState(() {
+                                                    _destinationAddress =
+                                                        selectPlace!;
+                                                    destinationLatitude =
+                                                        coordinates.latitude!;
+                                                    destinationLongitude =
+                                                        coordinates.longitude!;
+                                                    _placeList.clear();
+                                                  });
+                                                } catch (e) {
+                                                  print(e);
+                                                }
+                                                destinationAddressController
+                                                    .text = selectPlace!;
+                                              },
+                                            );
+                                          },
+                                        )
+                                      : Container(),
                                   SizedBox(height: 10),
                                   Visibility(
                                     visible:
@@ -511,63 +549,102 @@ class _MapViewState extends State<MapView> {
                                     ),
                                   ),
                                   SizedBox(height: 5),
-                                  ElevatedButton(
-                                    onPressed: (_startAddress != '' &&
-                                            _destinationAddress != '')
-                                        ? () async {
-                                            startAddressFocusNode.unfocus();
-                                            desrinationAddressFocusNode
-                                                .unfocus();
-                                            setState(() {
-                                              if (markers.isNotEmpty)
-                                                markers.clear();
-                                              if (polylines.isNotEmpty)
-                                                polylines.clear();
-                                              if (polylineCoordinates
-                                                  .isNotEmpty)
-                                                polylineCoordinates.clear();
-                                              _placeDistance = null;
-                                            });
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      ElevatedButton(
+                                        onPressed: (_startAddress != '' &&
+                                                _destinationAddress != '')
+                                            ? () async {
+                                                startAddressFocusNode.unfocus();
+                                                desrinationAddressFocusNode
+                                                    .unfocus();
+                                                setState(() {
+                                                  if (markers.isNotEmpty)
+                                                    markers.clear();
+                                                  if (polylines.isNotEmpty)
+                                                    polylines.clear();
+                                                  if (polylineCoordinates
+                                                      .isNotEmpty)
+                                                    polylineCoordinates.clear();
+                                                  _placeDistance = null;
+                                                });
 
-                                            _calculateDistance()
-                                                .then((isCalculated) {
-                                              if (isCalculated) {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                        'Distance Calculated Sucessfully'),
-                                                  ),
-                                                );
-                                              } else {
-                                                ScaffoldMessenger.of(context)
-                                                    .showSnackBar(
-                                                  SnackBar(
-                                                    content: Text(
-                                                        'Error Calculating Distance'),
-                                                  ),
-                                                );
+                                                _calculateDistance()
+                                                    .then((isCalculated) {
+                                                  if (isCalculated) {
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                            'Distance Calculated Sucessfully'),
+                                                      ),
+                                                    );
+                                                  } else {
+                                                    ScaffoldMessenger.of(
+                                                            context)
+                                                        .showSnackBar(
+                                                      SnackBar(
+                                                        content: Text(
+                                                            'Error Calculating Distance'),
+                                                      ),
+                                                    );
+                                                  }
+                                                });
                                               }
-                                            });
-                                          }
-                                        : null,
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(8.0),
-                                      child: Text(
-                                        'Show Route'.toUpperCase(),
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 20.0,
+                                            : null,
+                                        child: Padding(
+                                          padding: const EdgeInsets.all(8.0),
+                                          child: Text(
+                                            'Show Route'.toUpperCase(),
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 15.0,
+                                            ),
+                                          ),
+                                        ),
+                                        style: ElevatedButton.styleFrom(
+                                          primary: Colors.red,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(20.0),
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    style: ElevatedButton.styleFrom(
-                                      primary: Colors.red,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius:
-                                            BorderRadius.circular(20.0),
-                                      ),
-                                    ),
+                                      isSelected
+                                          ? ElevatedButton(
+                                              onPressed: () {
+                                                destinationAddressController
+                                                    .text = "";
+                                                _placeDistance = "0 ";
+                                                setState(() {
+                                                  isSelected = false;
+                                                });
+                                              },
+                                              child: Padding(
+                                                padding:
+                                                    const EdgeInsets.all(8.0),
+                                                child: Text(
+                                                  'Clear Destination'
+                                                      .toUpperCase(),
+                                                  style: TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 15.0,
+                                                  ),
+                                                ),
+                                              ),
+                                              style: ElevatedButton.styleFrom(
+                                                primary: Colors.red,
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                          20.0),
+                                                ),
+                                              ),
+                                            )
+                                          : Container(),
+                                    ],
                                   ),
                                 ],
                               ),
