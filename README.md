@@ -31,7 +31,7 @@ Before using it, you will need to make a new project in the **Google Cloud Platf
 * Clone the repository.
   
   ```bash
-  git clone https://github.com/sbis04/flutter_maps.git
+  git clone https://github.com/macenough/flutter_google_map.git
   ```
 
 * Open the project using your favorite IDE. For opening with VS Code:
